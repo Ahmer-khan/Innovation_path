@@ -22,7 +22,7 @@ pip install pymoo
 
 ```
 git clone https://github.com/your-repo/innovation-path.git
-cd innovation-path
+cd Innovation_Path
 ```
 
 ## Usage
