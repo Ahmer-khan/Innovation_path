@@ -64,7 +64,7 @@ For an understanding of the constraint structure, review the detailed descriptio
 
 The **Innovation Path** method was successfully tested on several optimization scenarios. The figure below, taken from the paper, illustrates an example of an innovation path with optimized intermediate solutions from the initial to the desired solution:
 
-![Innovation Path Figure](path/to/figure.png)
+![Innovation Path Figure](Innovation_path/git_zdt.png)
 
 *Figure 1: Example of an Innovation Path showing the transition from the initial solution to the desired solution.*
 
