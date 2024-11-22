@@ -2,19 +2,18 @@ from pymoo.core.survival import Survival #, split_by_feasibility
 import numpy as np
 from pymoo.util.randomized_argsort import randomized_argsort
 from random import random
-from Operators.PathSorting import PathSorting
+from Innovation_Path.Operators.PathSorting import PathSorting
 
 
 class RankAndAssociation(Survival):
 
-    def __init__(self, cnst, curr, alpha, curr_f, nds=None):
+    def __init__(self, cnst, alpha,zeta, nds=None):
 
         super().__init__(filter_infeasible=True)
         self.nds = PathSorting()
         self.cnst  = cnst
-        self.x0  = curr
-        self.xf  = curr_f
         self.alpha = alpha
+        self.zeta = zeta
     def _do(self,
             problem,
             pop,
@@ -26,11 +25,26 @@ class RankAndAssociation(Survival):
         # get the objective space values and objects
         F = pop.get("F").astype(float, copy=False)
         X = pop.get('X').astype(float, copy=False)
+        count_list = list(pop.get('counts'))
+        if count_list.count(None) == F.shape[0]:
+            anchorf = []
+            count_list = []
+        else:
+            rank = pop.get('rank')
+            non_ind = np.where(rank == 0)[0]
+            anchorf = F[non_ind, :]
+            anch_count = [count_list[i] for i in list(non_ind)]
+            count_list = anch_count[:]
 
         # the final indices of surviving individuals
         survivors = []
         # do the non-dominated sorting until splitting front
-        fronts,cd_path = self.nds.do(X,F,self.cnst,self.x0, self.xf, CV, n_stop_if_ranked=n_survive)
+        fronts,cd_path,counts = self.nds.do(X,F,anchorf,count_list,self.cnst, n_stop_if_ranked=n_survive)
+        curr_anch = 0
+        for i in range(len(counts)):
+            if counts[i] < self.zeta:
+                curr_anch = i
+                break
 
 
         for k, front in enumerate(fronts):
@@ -42,6 +56,7 @@ class RankAndAssociation(Survival):
 
             else:
                 Association_of_front, crowding_of_front = Association_and_Crowding(fronts[0], front,F,X, self.cnst)
+                counts = [-1 for i in range(len(front))]
 
                 if len(front) + len(survivors) <= n_survive:
                     I = np.arange(len(front))
@@ -56,11 +71,15 @@ class RankAndAssociation(Survival):
                         I = I[:-n_remove]
                     else:
                         I = []
-                        j = Associations.shape[0]
+                        Associations = [i for i in range(len(fronts[0]))]
+                        j = len(Associations)
+                        new = Associations[curr_anch:]
+                        new.extend(Associations[:curr_anch][::-1])
+                        Associations = new[:]
                         Associations = np.reshape(Associations,(j,1))
                         a = 2/((1+self.alpha)*(j))
                         weights    = [a*(self.alpha + (((1 - self.alpha)*x)/(j-1))) for x in range(j)]
-                        selected = []
+                        selected = [[] for n in range(len(fronts[0]))]
                         while len(I) < len(front):
                             i = random()
                             cum_prob = 0
@@ -91,10 +110,11 @@ class RankAndAssociation(Survival):
                                 break
 
             # save rank and crowding in the individual class
-            for j, i in enumerate(front):
+            for l, i in enumerate(front):
                 pop[i].set("rank", k)
-                pop[i].set("crowding", crowding_of_front[j])
-                pop[i].set('association',Association_of_front[j])
+                pop[i].set("crowding", crowding_of_front[l])
+                pop[i].set('association',Association_of_front[l])
+                pop[i].set('counts', counts[l])
 
             # extend the survivors by all or selected individuals
             survivors.extend(front[I])
@@ -117,7 +137,7 @@ def Association_and_Crowding(ND,Front,F,X,cnst,in_ind = ''):
             anchor = F[ND[j],:]
             anchor_x = X[ND[j],:]
             diff_f   = point[1] - anchor[1]
-            _,_,diff   = cnst.calculate(anchor_x,anchor,point_x,point)
+            _,_,diff,_,_   = cnst.calculate(anchor_x,anchor,point_x,point)
             SCV_mat[i,j] = diff
             G1_mat[i, j] = diff_f
     associations = np.zeros(len(Front))
