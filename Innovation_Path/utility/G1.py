@@ -1,4 +1,3 @@
-import numpy as np
 class G1(object):
     def __init__(self,delta):
         self.delta = delta
@@ -7,8 +6,5 @@ class G1(object):
         diff = f_p[1] - f_a[1]
         CV   = self.delta - diff
         SCV  = max(0,CV)
-        del1 = -(f_a[0] - f_p[0])/f_a[0]
-        point_mat = np.array([del1,diff/self.delta])
-        step_mat = np.array([-1,1])
 
-        return CV,SCV,diff,point_mat,step_mat
+        return CV,SCV,diff

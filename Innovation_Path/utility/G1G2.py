@@ -14,8 +14,5 @@ class G1G2(object):
         CV_mat[0,1] = self.delta[0] - diff2
         CV = CV_mat[0,0]/self.delta[1] + CV_mat[0,1]/self.delta[0]
         SCV = max(0, CV_mat[0,0]) + max(0,CV_mat[0,1])
-        del1 = -(f_a[0] - f_p[0]) / f_a[0]
-        point_mat = np.array([del1, diff1 / self.delta[1],diff2/self.delta[0]])
-        step_mat = np.array([-1, 1,1])
 
-        return CV, SCV,diff, point_mat, step_mat
+        return CV, SCV,diff

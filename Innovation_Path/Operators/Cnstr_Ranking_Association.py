@@ -1,10 +1,10 @@
 import numpy as np
 from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
-from Innovation_Path.Operators.Ranking_and_Association import RankAndAssociation,Association_and_Crowding
+from Operators.Ranking_and_Association import RankAndAssociation,Association_and_Crowding
 from pymoo.core.survival import Survival, split_by_feasibility
 from pymoo.core.population import Population
 from pymoo.util.randomized_argsort import randomized_argsort
-from Innovation_Path.core.PathProblem import Asf
+from core.PathProblem import Asf
 from sklearn.preprocessing import MinMaxScaler as MMS
 from random import random
 
@@ -14,16 +14,16 @@ from random import random
 
 class ConstrRankCrowdingAndAssociation(Survival):
 
-    def __init__(self, z ,w ,cnst ,alpha ,zeta, nds=None, crowding_func="cd"):
+    def __init__(self, z ,w ,cnst, curr ,alpha ,curr_F, nds=None, crowding_func="cd"):
 
         super().__init__(filter_infeasible=False)
         self.nds = nds if nds is not None else NonDominatedSorting()
-        self.ranking = RankAndAssociation(cnst,alpha ,zeta,nds=nds)
+        self.ranking = RankAndAssociation(cnst, curr ,alpha ,curr_F ,nds=nds)
         self.cnst = cnst
         self.alpha = alpha
+        self.curr_F = curr_F
         self.z = z
         self.w = w
-        self.zeta = zeta
 
     def _do(self,
             problem,
@@ -85,7 +85,6 @@ class ConstrRankCrowdingAndAssociation(Survival):
                 C = np.column_stack((G, H))
                 # X = pop[infeas].get('X').astype(float, copy=False)
                 F = pop.get('F').astype(float, copy=False)
-                count_list = list(pop.get('counts'))
 
                 # Fronts in infeasible population
                 infeas_fronts = self.nds.do(C, n_stop_if_ranked=n_remaining)
@@ -95,22 +94,11 @@ class ConstrRankCrowdingAndAssociation(Survival):
                     anch = np.where(pop.get('rank' )==0)[0]
                     max_rank = max(survivors.get('rank'))
 
-                    anchorf = F[anch, :]
-                    non_ind = anchorf[:, -1].argsort()
-                    anch_count = [count_list[anch[i]] for i in non_ind]
-                    count_list = anch_count[:]
-                    curr_anch = 0
-                    for i in range(len(count_list)):
-                        if count_list[i] < self.zeta:
-                            curr_anch = i
-                            break
-
                     # Iterate over fronts
                     for k, front in enumerate(infeas_fronts):
                         I = []
                         Association_of_front, crowding_of_front = Association_and_Crowding(anch, front ,F,X, self.cnst
                                                                                            ,infeas)
-                        counts = [-1 for i in range(len(front))]
 
                         if len(front) > n_remaining:
                             Associations = np.unique(Association_of_front)
@@ -122,15 +110,11 @@ class ConstrRankCrowdingAndAssociation(Survival):
 
                                 I = I[:-n_remove]
                             else:
-                                Associations = [i for i in range(len(count_list))]
-                                j = len(Associations)
-                                new = Associations[curr_anch:]
-                                new.extend(Associations[:curr_anch][::-1])
-                                Associations = new[:]
-                                Associations = np.reshape(Associations, (j, 1))
-                                a = 2 / ((1 + self.alpha) * (j))
-                                weights = [a * (1 + (x * (self.alpha - 1)) / (j - 1)) for x in range(j)]
-                                selected = [[] for n in range(len(infeas_fronts[0]))]
+                                j = Associations.shape[0]
+                                Associations = np.reshape(Associations ,(j ,1))
+                                a = 2/ ((1 + self.alpha) * (j))
+                                weights = [a * (self.alpha + (((1 - self.alpha) * x) / (j - 1))) for x in range(j)]
+                                selected = []
                                 while len(I) < len(front):
                                     i = random()
                                     cum_prob = 0
@@ -138,38 +122,45 @@ class ConstrRankCrowdingAndAssociation(Survival):
                                     while j > 0:
                                         if i <= cum_prob + weights[m]:
                                             ind_temp = np.where(Association_of_front == Associations[m, 0])[0]
-                                            index = [x for x in ind_temp if x not in selected[m]]
+                                            index = [x for x in ind_temp if x not in selected]
                                             if len(index) == 0:
                                                 Associations = np.delete(Associations, m, axis=0)
                                                 j = Associations.shape[0]
                                                 if j > 1:
                                                     a = 2 / ((1 + self.alpha) * (j))
-                                                    weights = [a * (1 + (x * (self.alpha - 1)) / (j - 1)) for x in
-                                                               range(j)]
+                                                    weights = [a * (self.alpha + (((1 - self.alpha) * x) / (j - 1))) for
+                                                               x in range(j)]
                                                     break
                                                 else:
                                                     weights = [1]
                                                     break
                                             else:
-                                                max_ind = np.argmax(crowding_of_front[index])
+                                                pos_ind = np.where(crowding_of_front[index] >= 0)[0]
+                                                if pos_ind.shape[0] > 0:
+                                                    if pos_ind.shape[0] == 1:
+                                                        max_ind = pos_ind[0]
+                                                    else:
+                                                        val = [index[i] for i in list(pos_ind)]
+                                                        max_ind = np.argmax(crowding_of_front[val])
+                                                else:
+                                                    max_ind = np.argmax(crowding_of_front[index])
                                                 I.append(index[max_ind])
-                                                selected[m].append(index[max_ind])
+                                                selected.append(index[max_ind])
                                                 break
                                         else:
                                             cum_prob += weights[m]
                                             m += 1
-                                if len(I) + len(survivors) >= n_survive:
-                                    break
+                                    if len(I) + len(survivors) >= n_survive:
+                                        break
                         else:
                             I = np.arange(len(front))
 
-                            # Save ranks
+                        # Save ranks
                         pop[infeas][front].set("cv_rank", k)
                         for j, i in enumerate(front):
                             pop[infeas[i]].set("rank", k + max_rank)
                             pop[infeas[i]].set('association', Association_of_front[j])
                             pop[infeas[i]].set("crowding", crowding_of_front[j])
-                            pop[infeas[i]].set('counts', counts[j])
 
                         # extend the survivors by all or selected individuals
                         survivors = Population.merge(survivors, pop[infeas][front[I]])
